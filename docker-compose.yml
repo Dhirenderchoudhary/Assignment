@@ -1,0 +1,22 @@
+# Local Postgres for development: `docker compose up -d`
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: clickrush-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clickrush
+      POSTGRES_PASSWORD: clickrush
+      POSTGRES_DB: clickrush
+    ports:
+      - "5432:5432"
+    volumes:
+      - clickrush-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clickrush -d clickrush"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  clickrush-data:
