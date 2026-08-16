@@ -181,6 +181,32 @@ has something on it.
 All responses are JSON. Errors use `{ "error": string, "details"?: object }`.
 Authentication is a signed JWT in an httpOnly, SameSite=Lax cookie.
 
+### Health
+
+| Method | Path | Returns |
+| --- | --- | --- |
+| `GET` | `/api/health` | `200` when the app is wired up, `503` with a hint when it isn't |
+
+Every other route answers a database failure with the same opaque `500`, which is right
+for players but useless when a fresh deployment is down: an unset `DATABASE_URL`, an
+unreachable host and a database with no tables in it all look identical. This separates
+them, reporting only presence and shape — never the connection string, key material, or
+driver error text, which can carry the host and user name.
+
+```bash
+curl -s https://<deployment>/api/health | jq
+{
+  "ok": false,
+  "checks": {
+    "database_url_set": true,
+    "auth_secret_valid": true,
+    "database_reachable": true,
+    "schema_applied": false
+  },
+  "hint": "Connected, but the tables are missing. Run: DATABASE_URL='<prod-url>' npm run db:migrate"
+}
+```
+
 ### Auth
 
 | Method | Path | Body | Returns |
