@@ -1,26 +1,154 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * ClickRush is a committed dark "arcade" theme — the game is a high-contrast
+ * focal surface, so a light mode would fight it rather than help.
+ */
+
+@theme {
+  --color-void: #05060c;
+  --color-surface: #0c0f1c;
+  --color-surface-2: #131829;
+  --color-border: #1f2740;
+  --color-muted: #8892b0;
+  --color-ink: #e8ecff;
+
+  --color-cyan: #22d3ee;
+  --color-pink: #f472b6;
+  --color-violet: #a78bfa;
+  --color-lime: #a3e635;
+  --color-amber: #fbbf24;
+  --color-danger: #fb7185;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --animate-pop: pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-rise: rise 0.9s ease-out forwards;
+  --animate-shimmer: shimmer 2.5s linear infinite;
+  --animate-pulse-ring: pulse-ring 1.6s ease-out infinite;
+  --animate-slide-up: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-skeleton: skeleton 1.4s ease-in-out infinite;
+  --animate-drop-in: drop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@keyframes pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.94); }
+  100% { transform: scale(1); }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@keyframes rise {
+  0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -90px) scale(1.5); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.6; }
+  70% { transform: scale(1.25); opacity: 0; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes skeleton {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.7; }
+}
+
+/* The countdown numeral lands rather than just appearing. */
+@keyframes drop-in {
+  0% { opacity: 0; transform: scale(1.6); }
+  60% { opacity: 1; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* Two soft radial glows so the flat void reads as depth, not as a black box. */
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(34, 211, 238, 0.13), transparent),
+    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(167, 139, 250, 0.1), transparent);
+  background-attachment: fixed;
+  min-height: 100dvh;
 }
+
+/* Utility layer -------------------------------------------------------- */
+
+@utility panel {
+  background-color: color-mix(in oklab, var(--color-surface) 85%, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  backdrop-filter: blur(12px);
+}
+
+@utility text-gradient {
+  background-image: linear-gradient(100deg, var(--color-cyan), var(--color-violet), var(--color-pink));
+  background-clip: text;
+  color: transparent;
+}
+
+/* Tabular figures keep the score from jittering as digits change width. */
+@utility numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Grey block standing in for content that hasn't loaded. */
+@utility skeleton {
+  background-color: var(--color-surface-2);
+  border-radius: 0.5rem;
+  animation: var(--animate-skeleton);
+}
+
+/* Filter strips scroll sideways on narrow screens instead of wrapping into
+   a ragged second row. The bar itself is noise, so hide it. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* Keyboard focus has to be visible on a dark surface, and the browser default
+   dotted outline is not. Pointer users never see this. */
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+}
+
+/* Respect users who've asked the OS for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-cyan) 35%, transparent);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-void); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: #2c3757; }
