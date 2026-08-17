@@ -3,7 +3,23 @@
 A 60-second click challenge. Sign up, mash a button until the timer runs out, and see
 where you land on the global, daily and weekly boards.
 
-Built with Next.js (App Router) and PostgreSQL.
+**[▶ Play it live](https://assignment-teal-alpha.vercel.app)** &nbsp;·&nbsp;
+[Leaderboard](https://assignment-teal-alpha.vercel.app/leaderboard) &nbsp;·&nbsp;
+[Health check](https://assignment-teal-alpha.vercel.app/api/health) &nbsp;·&nbsp;
+[Source](https://github.com/Dhirenderchoudhary/Assignment)
+
+| | |
+| --- | --- |
+| **Live app** | https://assignment-teal-alpha.vercel.app |
+| **Repository** | https://github.com/Dhirenderchoudhary/Assignment |
+| **Stack** | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · PostgreSQL 17 |
+| **Hosting** | Vercel (app) · Supabase (Postgres, via the transaction pooler) |
+| **Auth** | bcrypt + JWT in an httpOnly cookie — no third-party auth service |
+| **Data access** | Hand-written SQL over `pg`. No ORM. |
+
+Three game modes, server-authoritative timing, five anti-cheat rejection paths, and
+leaderboards that update live over Server-Sent Events. The API is covered end to end by a
+29-check smoke suite that plays real timed runs against a running server.
 
 ---
 
@@ -12,7 +28,7 @@ Built with Next.js (App Router) and PostgreSQL.
 You need Node 20+ and a PostgreSQL 14+ database. Docker is the quickest way to get one.
 
 ```bash
-git clone <your-repo-url> clickrush
+git clone https://github.com/Dhirenderchoudhary/Assignment.git clickrush
 cd clickrush
 npm install
 
@@ -189,21 +205,34 @@ Authentication is a signed JWT in an httpOnly, SameSite=Lax cookie.
 
 Every other route answers a database failure with the same opaque `500`, which is right
 for players but useless when a fresh deployment is down: an unset `DATABASE_URL`, an
-unreachable host and a database with no tables in it all look identical. This separates
-them, reporting only presence and shape — never the connection string, key material, or
-driver error text, which can carry the host and user name.
+unreachable host, a rejected password and a database with no tables in it all look
+identical. This separates them and names the fix for each, reporting only presence and
+shape — never the connection string, hostname, key material, or driver error text, which
+carries the host and user name.
 
 ```bash
-curl -s https://<deployment>/api/health | jq
+curl -s https://assignment-teal-alpha.vercel.app/api/health | jq
 {
-  "ok": false,
+  "ok": true,
   "checks": {
     "database_url_set": true,
     "auth_secret_valid": true,
     "database_reachable": true,
-    "schema_applied": false
+    "schema_applied": true
   },
-  "hint": "Connected, but the tables are missing. Run: DATABASE_URL='<prod-url>' npm run db:migrate"
+  "connection": { "kind": "supabase-pooler", "port": "6543" },
+  "error_code": null
+}
+```
+
+When something is wrong it says which thing, and what to do:
+
+```json
+{
+  "ok": false,
+  "connection": { "kind": "supabase-direct", "port": "5432" },
+  "error_code": "ENOTFOUND",
+  "hint": "DATABASE_URL uses Supabase's direct host (db.<ref>.supabase.co), which resolves to IPv6 only and is unreachable from IPv4 serverless functions. Switch to the transaction pooler…"
 }
 ```
 
@@ -279,21 +308,36 @@ db/schema.sql              tables, constraints, indexes
 scripts/migrate.ts         applies the schema
 scripts/seed.ts            demo data
 scripts/smoke.sh           end-to-end API test
+src/proxy.ts               redirects signed-out visitors away from /profile
 src/app/                   pages and route handlers
+  page.tsx                 landing page / play screen
+  leaderboard/  profile/  login/  signup/
+  error.tsx  not-found.tsx        app-shell states
   api/auth/                signup, login, logout, me
   api/game/                start, finish
   api/leaderboard/         board + SSE stream
   api/profile/
-src/components/            GameArena, LiveLeaderboard, AuthForm, Nav
+  api/health/              deployment diagnostics
+src/components/            GameArena, LiveLeaderboard, AuthForm, Nav, TimeAgo
 src/lib/
   db.ts                    pooled connection + query helpers
   auth.ts                  bcrypt, JWT sessions, currentUser/requireUser
+  session-cookie.ts        the cookie name alone, so proxy.ts stays dependency-free
   api.ts                   error envelope, route handler wrapper
   leaderboard.ts           ranking queries
   stats.ts                 profile aggregates
   modes.ts                 mode config + score calculation
   validation.ts            Zod schemas
+  client.ts                formatting helpers shared by client components
+src/utils/supabase/        Supabase SDK clients (unused by the game — see below)
 ```
+
+`src/proxy.ts` is Next 16's replacement for `middleware.ts`. It only checks that the
+session cookie is *present* before letting `/profile` render — cheap, and it means a
+signed-out visitor gets a real `307` instead of a streamed shell that redirects halfway
+through. It deliberately does not verify the token; `currentUser()` remains the only
+authority on who you are. It imports the cookie name from `src/lib/session-cookie.ts`
+rather than from `auth.ts` so the proxy bundle doesn't pull in bcrypt, jose and `pg`.
 
 There's no ORM. The queries here are the interesting part of the project — ranking,
 windowing, deduplicating by player — and expressing them in SQL is clearer than
@@ -309,19 +353,39 @@ and a JSON response).
 
 ## Deploying
 
-Any Node host works, and any Postgres. On Vercel:
+Any Node host works, and any Postgres. This deployment runs on Vercel with Supabase
+Postgres:
 
 1. Push to GitHub and import the repository.
 2. Point `DATABASE_URL` at a Postgres instance. With Supabase, take **Project Settings →
-   Database → Connection string → Transaction pooler** (port 6543), not the direct 5432
-   host — serverless functions open a connection per instance and exhaust the direct
-   limit. Neon via the Vercel Marketplace also works and sets the variable for you.
+   Database → Connection string → Transaction pooler** — host `*.pooler.supabase.com`,
+   port `6543`. Neon via the Vercel Marketplace also works and sets the variable for you.
 3. Set `AUTH_SECRET` to the output of `openssl rand -base64 32`.
 4. Run the migration once against the production database:
    `DATABASE_URL='<prod-url>' npm run db:migrate`
+5. Redeploy. Environment variables are read at request time, but a build that already
+   exists won't pick up a variable added after it.
+6. Check `/api/health`. It returns `200` with every box ticked, or `503` naming what's
+   wrong.
 
 The SSE route is a normal Node function (`maxDuration = 300`), so it needs no special
 configuration.
+
+> **Use the pooler host, not the direct one.** Supabase's direct host,
+> `db.<ref>.supabase.co`, now publishes only an `AAAA` record. Vercel's functions are
+> IPv4, so DNS resolution fails with `ENOTFOUND` before authentication is ever attempted
+> — and because the failure happens at connect time, a perfectly correct password looks
+> broken. Beyond reachability, the pooler is the right choice anyway: serverless opens a
+> connection per instance and would exhaust the direct connection limit.
+
+Verify the whole deployment in one command:
+
+```bash
+BASE_URL=https://assignment-teal-alpha.vercel.app npm run smoke
+```
+
+It signs up a throwaway account, plays two real timed runs and asserts all 29 checks
+against the live site.
 
 ### A note on Supabase
 
